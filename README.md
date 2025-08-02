@@ -5,13 +5,16 @@ Ekstensi Chrome yang menggunakan Gemini AI untuk mengisi form secara otomatis. S
 ## ✨ Fitur
 
 - 🎯 **Deteksi Form Otomatis**: Mendeteksi semua field form di halaman web
+- 🖱️ **Element Selector**: Pilih elemen spesifik untuk analisis dan pengisian form yang terfokus
 - 🧠 **AI-Powered**: Menggunakan Gemini AI untuk generate data yang realistis
-- � **Data Bervariasi**: Setiap pengisian menghasilkan data yang berbeda dan unik
-- �🇮🇩 **Data Indonesia**: Generate data yang sesuai dengan format Indonesia
+- 🔄 **Data Bervariasi**: Setiap pengisian menghasilkan data yang berbeda dan unik
+- 🇮🇩 **Data Indonesia**: Generate data yang sesuai dengan format Indonesia
 - ⚡ **Cepat & Mudah**: Isi form hanya dengan 2 klik
 - 🔧 **Developer-Friendly**: Khusus dibuat untuk kebutuhan testing developer
 - 📊 **Smart Tracking**: Mengingat data yang sudah digunakan untuk variasi maksimal
 - 🎨 **UI Modern**: Interface yang clean dan mudah digunakan
+- 👁️ **Visual Feedback**: Highlight elemen yang dipilih dengan feedback visual yang jelas
+- 🗑️ **Clear Highlight**: Tombol untuk menghapus highlight tanpa menghilangkan seleksi elemen
 
 ## 📋 Field yang Didukung
 
@@ -59,30 +62,54 @@ git clone https://github.com/your-username/auto-filler-extension.git
 
 ## 📖 Cara Penggunaan
 
-### 1. Analisis Form
+### 1. Element Selector (Fitur Baru) 🎯
+
+**Fitur ini memungkinkan Anda untuk memilih elemen spesifik di halaman dan hanya menganalisis/mengisi form dalam elemen tersebut.**
 
 1. Buka halaman web yang memiliki form
 2. Klik icon **Auto Filler AI** di Chrome toolbar
-3. Klik tombol **📊 Analisis Form**
-4. Extension akan mendeteksi semua field yang dapat diisi
-5. **Troubleshooting**: Jika tombol "Isi Form dengan AI" tidak aktif, gunakan tombol **🔍 Debug Form** untuk melihat detail deteksi
+3. Klik tombol **🎯 Pilih Elemen**
+4. Kursor akan berubah menjadi crosshair
+5. Hover di atas elemen yang ingin dipilih (akan muncul highlight orange)
+6. Klik elemen untuk memilihnya (akan muncul highlight hijau dengan label "Selected Scope")
+7. Tombol **�️ Hapus Highlight** akan selalu tersedia untuk menghilangkan visual highlight
+8. Analisis dan pengisian form akan terbatas pada elemen yang dipilih
 
-### 2. Isi Form dengan AI
+**Keuntungan Element Selector:**
+
+- Fokus pada bagian form tertentu saja
+- Mengabaikan form fields di luar area yang dipilih  
+- Lebih presisi untuk halaman dengan multiple forms
+- Visual feedback yang jelas tentang area yang aktif
+
+### 2. Analisis Form
+
+1. (Opsional) Pilih elemen spesifik menggunakan Element Selector
+2. Klik tombol **�📊 Analisis Form**
+3. Extension akan mendeteksi field dalam scope yang dipilih atau seluruh halaman
+4. **Troubleshooting**: Jika tombol "Isi Form dengan AI" tidak aktif, gunakan tombol **🔍 Debug Form** untuk melihat detail deteksi
+
+### 3. Isi Form dengan AI
 
 1. Setelah form dianalisis, klik **✨ Isi Form dengan AI**
-2. AI akan generate data yang sesuai untuk setiap field
-3. Form akan terisi secara otomatis
+2. AI akan generate data yang sesuai untuk setiap field dalam scope
+3. Form akan terisi secara otomatis hanya pada area yang dipilih
 
-### 3. Kosongkan Form
+### 4. Kosongkan Form
 
-- Klik **🗑️ Kosongkan Form** untuk menghapus semua isi form
+- Klik **🗑️ Kosongkan Form** untuk menghapus semua isi form dalam scope yang dipilih
 
-### 4. Debug Form (Fitur Troubleshooting)
+### 5. Clear Highlight
 
-- Klik **🔍 Debug Form** untuk melihat informasi detail tentang form
+- Klik tombol **👁️** (selalu tersedia) untuk menghilangkan highlight visual tanpa menghapus seleksi elemen
+- Berguna untuk melihat form tanpa gangguan visual highlight
+
+### 6. Debug Form (Fitur Troubleshooting)
+
+- Klik **🔍 Debug Form** untuk melihat informasi detail tentang form dalam scope
 - Berguna untuk troubleshooting jika form tidak terdeteksi dengan benar
 
-### 5. Reset Variasi Data
+### 7. Reset Variasi Data
 
 - Klik **🔄 Reset Variasi** untuk menghapus tracking data yang sudah digunakan
 - Berguna jika ingin memulai variasi data dari awal lagi
@@ -108,20 +135,58 @@ git clone https://github.com/your-username/auto-filler-extension.git
 - **Chrome Extension API**: Akses browser functionality
 - **Gemini AI API**: Generate data dengan AI
 - **Chrome Manifest V3**: Standard terbaru Chrome extension
+- **Element Selection API**: Interactive element picker dengan visual feedback
+- **DOM Manipulation**: Scoped form detection dan filling
+- **CSS Animations**: Visual feedback untuk element selection dan form filling
+
+## 🔧 Fitur Teknis Terbaru
+
+### Element Selector Engine
+
+- **Interactive Selection**: Point-and-click element selection
+- **Visual Feedback**: Real-time highlight dengan animasi
+- **Scoped Analysis**: Form detection terbatas pada elemen yang dipilih
+- **Smart Validation**: Hanya elemen yang mengandung form fields yang bisa dipilih
+
+### Enhanced Form Detection  
+
+- **DOM Validation**: Robust error handling untuk berbagai jenis website
+- **Dynamic Scoping**: Automatic atau manual scope selection
+- **Field Type Inference**: AI-powered field type detection
+- **Cross-Framework Support**: Kompatibel dengan React, Vue, Angular, dan vanilla JS
+
+### Improved UI/UX
+
+- **Always-Visible Controls**: Tombol control yang persistent dan mudah diakses
+- **Smart Button States**: Dynamic button enabling/disabling berdasarkan context
+- **Visual Indicators**: Clear feedback untuk setiap action
+- **Responsive Design**: Interface yang adaptif untuk berbagai ukuran popup
 
 ## 📁 Struktur File
 
+```plaintext
 auto-filler-extension/
-├── manifest.json          # Extension configuration
-├── popup.html             # Extension popup interface  
-├── popup.css              # Popup styling
-├── popup.js               # Popup logic
-├── content.js             # Content script for form detection
-├── background.js          # Background service worker
-├── icon16.png             # Extension icon 16x16
-├── icon48.png             # Extension icon 48x48
-├── icon128.png            # Extension icon 128x128
-└── README.md              # Documentation
+├── manifest.json                    # Extension configuration
+├── src/                            # Source code directory
+│   ├── popup/                      # Popup interface files
+│   │   ├── popup.html              # Extension popup interface  
+│   │   ├── popup.css               # Popup styling
+│   │   └── popup.js                # Popup logic & element selector
+│   ├── content/                    # Content scripts
+│   │   └── content.js              # Form detection & element selection
+│   └── background/                 # Background scripts
+│       └── background.js           # Background service worker
+├── assets/                         # Asset files
+│   ├── icons/                      # Extension icons
+│   │   ├── icon16.png              # Extension icon 16x16
+│   │   ├── icon48.png              # Extension icon 48x48
+│   │   └── icon128.png             # Extension icon 128x128
+│   └── images/                     # Additional images
+├── docs/                           # Documentation
+│   ├── INSTALL_GUIDE.md            # Installation guide
+│   └── ICON_INSTRUCTIONS.md        # Icon instructions
+└── README.md                       # Main documentation
+```
 
 ## 🔧 Pengembangan
 
@@ -161,16 +226,52 @@ Extension ini membutuhkan permissions berikut:
 Kontribusi sangat welcome! Silakan:
 
 1. Fork repository
-2. Buat feature branch
-3. Commit perubahan
-4. Push ke branch
+2. Buat feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit perubahan (`git commit -m 'Add some amazing feature'`)
+4. Push ke branch (`git push origin feature/amazing-feature`)
 5. Buat Pull Request
+
+### 🌿 Branch Information
+
+- **main**: Stable production branch
+- **feature/element-selector**: Latest development dengan Element Selector features
+- Buat feature branch baru dari `main` untuk kontribusi
+
+### 🛠️ Development Workflow
+
+1. Clone repository: `git clone https://github.com/Wahyusrg0819/auto-filler-ai-extension.git`
+2. Install dependencies (jika ada)
+3. Load extension di Chrome untuk testing
+4. Buat perubahan dan test thoroughly
+5. Commit dengan conventional commit messages
+6. Push dan buat PR ke main branch
 
 ## 📄 Lisensi
 
 MIT License - silakan gunakan untuk keperluan pribadi maupun komersial.
 
-## 👨‍💻 Developer
+## � Changelog
+
+### v2.0.0 - Element Selector Update (Latest)
+
+- ✨ **NEW**: Element Selector - Pilih elemen spesifik untuk analisis terfokus
+- ✨ **NEW**: Visual feedback dengan highlight interaktif
+- ✨ **NEW**: Scoped form analysis - hanya dalam elemen yang dipilih
+- ✨ **NEW**: Clear highlight button yang selalu tersedia
+- 🔧 **IMPROVED**: Enhanced error handling untuk berbagai jenis website
+- 🔧 **IMPROVED**: DOM validation untuk kompatibilitas yang lebih baik
+- 🔧 **IMPROVED**: UI/UX dengan persistent controls
+- 🔧 **IMPROVED**: Reorganisasi struktur folder untuk maintainability
+
+### v1.0.0 - Initial Release
+
+- 🎯 Deteksi form otomatis
+- 🧠 AI-powered data generation dengan Gemini
+- 🇮🇩 Data format Indonesia
+- 📊 Smart tracking dan variasi data
+- 🎨 Modern UI design
+
+## �👨‍💻 Developer
 
 Dibuat oleh **Wahyu Muliadi Siregar**
 
