@@ -2,6 +2,9 @@
 
 Ekstensi Chrome yang menggunakan Gemini AI untuk mengisi form secara otomatis. Sempurna untuk developer yang sering melakukan testing form.
 
+![Extension Demo](assets/images/extension-demo.png)
+*Auto Filler AI extension dalam aksi - mengisi form RoboForm dengan data yang dihasilkan AI*
+
 ## ✨ Fitur
 
 - 🎯 **Deteksi Form Otomatis**: Mendeteksi semua field form di halaman web
@@ -250,7 +253,7 @@ Kontribusi sangat welcome! Silakan:
 
 MIT License - silakan gunakan untuk keperluan pribadi maupun komersial.
 
-## � Changelog
+## 📋 Changelog
 
 ### v2.0.0 - Element Selector Update (Latest)
 
@@ -271,7 +274,7 @@ MIT License - silakan gunakan untuk keperluan pribadi maupun komersial.
 - 📊 Smart tracking dan variasi data
 - 🎨 Modern UI design
 
-## �👨‍💻 Developer
+## 👨‍💻 Developer
 
 Dibuat oleh **Wahyu Muliadi Siregar**
 
