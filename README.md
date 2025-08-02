@@ -18,7 +18,7 @@ Ekstensi Chrome yang menggunakan Gemini AI untuk mengisi form secara otomatis. S
 
 Ekstensi Chrome yang menggunakan Gemini AI untuk mengisi form secara otomatis. Sempurna untuk developer yang sering melakukan testing form.
 
-## ✨ Fitur
+## Fitur
 
 - 🎯 **Deteksi Form Otomatis**: Mendeteksi semua field form di halaman web
 - 🧠 **AI-Powered**: Menggunakan Gemini AI untuk generate data yang realistis
@@ -177,7 +177,7 @@ git clone https://github.com/your-username/auto-filler-extension.git
 
 ## 📁 Struktur File
 
-```
+```plaintext
 auto-filler-extension/
 ├── manifest.json                    # Extension configuration
 ├── src/                            # Source code directory
