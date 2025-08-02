@@ -281,13 +281,31 @@ class AutoFillerContent {
             left: ${rect.left}px;
             width: ${rect.width}px;
             height: ${rect.height}px;
-            background: rgba(34, 197, 94, 0.2);
+            background: rgba(34, 197, 94, 0.15);
             border: 3px solid #22c55e;
             pointer-events: none;
             z-index: 10002;
             border-radius: 6px;
             animation: selectedPulse 2s infinite;
+            box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
         `;
+        
+        // Add label to show this is selected scope
+        const label = document.createElement('div');
+        label.style.cssText = `
+            position: fixed;
+            top: ${rect.top - 25}px;
+            left: ${rect.left}px;
+            background: #22c55e;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 10003;
+            pointer-events: none;
+        `;
+        label.textContent = '🎯 Selected Scope';
         
         // Add CSS animation
         if (!document.getElementById('auto-filler-animations')) {
@@ -296,13 +314,27 @@ class AutoFillerContent {
             style.textContent = `
                 @keyframes selectedPulse {
                     0%, 100% { opacity: 1; transform: scale(1); }
-                    50% { opacity: 0.7; transform: scale(1.02); }
+                    50% { opacity: 0.8; transform: scale(1.01); }
                 }
             `;
             document.head.appendChild(style);
         }
         
         document.body.appendChild(highlight);
+        document.body.appendChild(label);
+    }
+
+    removeSelectedHighlight() {
+        const highlight = document.getElementById('auto-filler-selected-highlight');
+        if (highlight) highlight.remove();
+        
+        // Also remove label - find by text content since it's dynamic
+        const allDivs = document.querySelectorAll('div[style*="Selected Scope"]');
+        allDivs.forEach(div => {
+            if (div.textContent.includes('Selected Scope')) {
+                div.remove();
+            }
+        });
     }
 
     removeSelectedHighlight() {
@@ -316,6 +348,13 @@ class AutoFillerContent {
 
         // Use selected element as scope if available, otherwise use document
         const scope = this.selectedElement || document;
+        
+        // Log scope for debugging
+        if (this.selectedElement) {
+            console.log('🎯 Detecting form fields within selected element:', this.selectedElement.tagName, this.selectedElement.className || this.selectedElement.id || '');
+        } else {
+            console.log('🌐 Detecting form fields in entire document');
+        }
 
         // Enhanced selectors for better form field detection
         const selectors = [
@@ -345,6 +384,12 @@ class AutoFillerContent {
                     element.disabled || 
                     element.readOnly || 
                     this.isElementHidden(element)) {
+                    return;
+                }
+
+                // Additional validation: ensure element is actually within our scope
+                if (this.selectedElement && !this.selectedElement.contains(element)) {
+                    console.warn('⚠️ Element found outside selected scope, skipping:', element);
                     return;
                 }
 
@@ -551,10 +596,20 @@ class AutoFillerContent {
     fillFormWithData(data) {
         let filledCount = 0;
         const fields = this.detectFormFields();
+        
+        // Use selected element as scope if available, otherwise use document
+        const scope = this.selectedElement || document;
 
         fields.forEach(fieldInfo => {
-            const element = document.querySelector(fieldInfo.selector);
+            // Use scope.querySelector instead of document.querySelector
+            const element = scope.querySelector(fieldInfo.selector);
             if (!element || element.disabled || element.readOnly) {
+                return;
+            }
+
+            // Double-check: ensure element is within our selected scope
+            if (this.selectedElement && !this.selectedElement.contains(element)) {
+                console.warn('⚠️ Skipping element outside selected scope:', element);
                 return;
             }
 
@@ -569,7 +624,8 @@ class AutoFillerContent {
             }
         });
 
-        console.log(`✅ Filled ${filledCount} fields with AI data`);
+        const scopeDesc = this.selectedElement ? 'selected element' : 'entire page';
+        console.log(`✅ Filled ${filledCount} fields with AI data in ${scopeDesc}`);
         return filledCount;
     }
 
@@ -682,10 +738,20 @@ class AutoFillerContent {
     clearAllForms() {
         const fields = this.detectFormFields();
         let clearedCount = 0;
+        
+        // Use selected element as scope if available, otherwise use document
+        const scope = this.selectedElement || document;
 
         fields.forEach(fieldInfo => {
-            const element = document.querySelector(fieldInfo.selector);
+            // Use scope.querySelector instead of document.querySelector
+            const element = scope.querySelector(fieldInfo.selector);
             if (!element || element.disabled || element.readOnly) {
+                return;
+            }
+
+            // Double-check: ensure element is within our selected scope
+            if (this.selectedElement && !this.selectedElement.contains(element)) {
+                console.warn('⚠️ Skipping element outside selected scope:', element);
                 return;
             }
 
@@ -703,7 +769,8 @@ class AutoFillerContent {
             clearedCount++;
         });
 
-        console.log(`🗑️ Cleared ${clearedCount} form fields`);
+        const scopeDesc = this.selectedElement ? 'selected element' : 'entire page';
+        console.log(`🗑️ Cleared ${clearedCount} form fields in ${scopeDesc}`);
         return clearedCount;
     }
 
