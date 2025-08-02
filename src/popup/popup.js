@@ -16,13 +16,17 @@ class AutoFillerPopup {
         this.bindEvents();
         this.setupMessageListener();
         this.updateUI();
+        this.hideClearHighlightButton(); // Initially hide the clear highlight button
         this.log('Ekstensi siap digunakan', 'info');
     }
 
     setupMessageListener() {
         // Listen for messages from content script
+        console.log('Setting up message listener for elementSelected');
         chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+            console.log('Popup received message:', message);
             if (message.action === 'elementSelected') {
+                console.log('Processing elementSelected message:', message.element);
                 this.onElementSelected(message.element);
             }
         });
@@ -63,6 +67,14 @@ class AutoFillerPopup {
         if (clearSelectionBtn) {
             clearSelectionBtn.addEventListener('click', () => {
                 this.clearSelectedElement();
+            });
+        }
+
+        // Clear Highlight (small button next to element selector)
+        const clearHighlightBtn = document.getElementById('clearHighlight');
+        if (clearHighlightBtn) {
+            clearHighlightBtn.addEventListener('click', () => {
+                this.clearElementHighlight();
             });
         }
 
@@ -134,6 +146,21 @@ class AutoFillerPopup {
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             
+            // Check if content script is ready by sending a test message first
+            try {
+                await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
+            } catch (pingError) {
+                // Content script not ready, inject it
+                this.log('Memuat content script...', 'info');
+                await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    files: ['src/content/content.js']
+                });
+                
+                // Wait a bit for initialization
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
             await chrome.tabs.sendMessage(tab.id, { action: 'startElementSelection' });
             
             this.isSelectingElement = true;
@@ -142,7 +169,7 @@ class AutoFillerPopup {
             
         } catch (error) {
             console.error('Error starting element selection:', error);
-            this.log('Error: Gagal mengaktifkan mode seleksi elemen', 'error');
+            this.log('Error: Gagal mengaktifkan mode seleksi elemen. Pastikan halaman sudah dimuat.', 'error');
         }
     }
 
@@ -170,6 +197,7 @@ class AutoFillerPopup {
             this.selectedElement = null;
             this.updateSelectedElementInfo();
             this.updateUI();
+            this.hideClearHighlightButton();
             this.log('Elemen terpilih dihapus', 'info');
             
         } catch (error) {
@@ -178,10 +206,12 @@ class AutoFillerPopup {
     }
 
     onElementSelected(elementInfo) {
+        console.log('onElementSelected called:', elementInfo);
         this.selectedElement = elementInfo;
         this.isSelectingElement = false;
         this.updateElementSelectorButton();
         this.updateSelectedElementInfo();
+        // Remove showClearHighlightButton() call since button is always visible
         this.log(`Elemen terpilih: ${elementInfo.tagName} (${elementInfo.formFields.length} fields)`, 'success');
         
         // Auto-analyze form after selection
@@ -229,6 +259,48 @@ class AutoFillerPopup {
         }
     }
 
+    // Note: Clear highlight button is now always visible
+    // showClearHighlightButton() and hideClearHighlightButton() are no longer needed
+    /*
+    showClearHighlightButton() {
+        const clearHighlightBtn = document.getElementById('clearHighlight');
+        console.log('Showing clear highlight button:', clearHighlightBtn);
+        if (clearHighlightBtn) {
+            clearHighlightBtn.style.display = 'flex';
+            clearHighlightBtn.classList.add('show');
+            console.log('Clear highlight button shown, styles:', {
+                display: clearHighlightBtn.style.display,
+                computed: window.getComputedStyle ? window.getComputedStyle(clearHighlightBtn).display : 'unknown'
+            });
+        } else {
+            console.error('Clear highlight button not found!');
+        }
+    }
+
+    hideClearHighlightButton() {
+        const clearHighlightBtn = document.getElementById('clearHighlight');
+        if (clearHighlightBtn) {
+            clearHighlightBtn.style.display = 'none';
+            clearHighlightBtn.classList.remove('show');
+        }
+    }
+    */
+
+    async clearElementHighlight() {
+        try {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            
+            await chrome.tabs.sendMessage(tab.id, { action: 'clearElementHighlight' });
+            
+            // Remove hideClearHighlightButton() call since button should stay visible
+            this.log('Highlight elemen dihilangkan', 'info');
+            
+        } catch (error) {
+            console.error('Error clearing element highlight:', error);
+            this.log('Error: Gagal menghilangkan highlight elemen', 'error');
+        }
+    }
+
     async analyzeForm() {
         if (!this.apiKey) {
             this.updateApiStatus('Harap masukkan API Key terlebih dahulu', 'error');
@@ -244,6 +316,19 @@ class AutoFillerPopup {
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             
+            // Check if content script is ready
+            try {
+                await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
+            } catch (pingError) {
+                // Content script not ready, inject it
+                this.log('Memuat content script...', 'info');
+                await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    files: ['src/content/content.js']
+                });
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
             // Send message with scope parameter
             const response = await chrome.tabs.sendMessage(tab.id, { 
                 action: 'analyzeForm',
@@ -254,6 +339,8 @@ class AutoFillerPopup {
                 const fields = response.fields;
                 this.fieldCount = fields.length;
                 this.isFormAnalyzed = true;
+
+                console.log('Analysis successful - Field count:', this.fieldCount, 'Form analyzed:', this.isFormAnalyzed);
 
                 // Update field count display
                 const fieldCountElement = document.getElementById('fieldCount');
@@ -268,7 +355,7 @@ class AutoFillerPopup {
                     formCountElement.textContent = uniqueForms.size;
                 }
 
-                this.updateUI();
+                this.updateUI(); // This should enable the fill form button
                 
                 const scopeText = this.selectedElement ? 'dalam elemen terpilih' : 'di halaman';
                 this.log(`✅ Ditemukan ${this.fieldCount} field ${scopeText}`, 'success');
@@ -277,259 +364,76 @@ class AutoFillerPopup {
             }
         } catch (error) {
             console.error('Analyze form error:', error);
-            this.log('❌ Error saat menganalisis form', 'error');
+            this.log('❌ Error saat menganalisis form. Pastikan halaman sudah dimuat.', 'error');
         }
     }
 
     async fillForm() {
-        if (!this.apiKey || !this.isFormAnalyzed) {
-            this.log('Harap analisis form terlebih dahulu', 'error');
+        console.log('Fill form button clicked - Form analyzed:', this.isFormAnalyzed, 'Field count:', this.fieldCount, 'API Key:', !!this.apiKey);
+        
+        if (!this.isFormAnalyzed) {
+            this.log('❌ Silakan analisis form terlebih dahulu', 'error');
             return;
         }
 
-        this.log('Mengisi form dengan AI...', 'info');
-        const fillButton = document.getElementById('fillForm');
-        fillButton.disabled = true;
-        
-        // Update button text safely - check if btn-text span exists
-        const btnTextElement = fillButton.querySelector('.btn-text');
-        if (btnTextElement) {
-            btnTextElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
-        } else {
-            fillButton.textContent = '🔄 Memproses...';
+        if (!this.apiKey) {
+            this.updateApiStatus('Harap masukkan API Key terlebih dahulu', 'error');
+            return;
         }
+
+        this.log('🤖 Generating data dengan AI...', 'info');
 
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-            // Get form fields with inline function (same as in analyzeForm)
-            const results = await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                function: () => {
-                    // Helper function untuk mencari label
-                    function getFieldLabel(element) {
-                        if (element.labels && element.labels.length > 0) {
-                            return element.labels[0].textContent.trim();
-                        }
-                        const label = document.querySelector(`label[for="${element.id}"]`);
-                        if (label) {
-                            return label.textContent.trim();
-                        }
-                        const closestLabel = element.closest('label');
-                        if (closestLabel) {
-                            return closestLabel.textContent.replace(element.value || '', '').trim();
-                        }
-                        let prev = element.previousElementSibling;
-                        if (prev && prev.tagName.toLowerCase() === 'label') {
-                            return prev.textContent.trim();
-                        }
-                        return '';
-                    }
-
-                    // Form field detection
-                    const formFields = [];
-                    const selectors = [
-                        'input[type="text"]', 'input[type="email"]', 'input[type="tel"]',
-                        'input[type="url"]', 'input[type="number"]', 'input[type="password"]',
-                        'input[type="search"]', 'input[type="date"]', 'input[type="datetime-local"]',
-                        'input[type="time"]', 'input[type="month"]', 'input[type="week"]',
-                        'input:not([type])', 'textarea', 'select'
-                    ];
-
-                    selectors.forEach(selector => {
-                        const elements = document.querySelectorAll(selector);
-                        elements.forEach(element => {
-                            if (!element.disabled && !element.readOnly) {
-                                const isInModal = element.closest('.modal, [role="dialog"], .popup, .overlay, .lightbox') !== null;
-                                formFields.push({
-                                    id: element.id || '',
-                                    name: element.name || '',
-                                    type: element.type || element.tagName.toLowerCase(),
-                                    placeholder: element.placeholder || '',
-                                    label: getFieldLabel(element),
-                                    tagName: element.tagName.toLowerCase(),
-                                    required: element.required || false,
-                                    isInModal: isInModal
-                                });
-                            }
-                        });
-                    });
-
-                    return formFields;
-                }
+            
+            // Check if content script is ready
+            try {
+                await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
+            } catch (pingError) {
+                // Content script not ready, inject it
+                this.log('Memuat content script...', 'info');
+                await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    files: ['src/content/content.js']
+                });
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            // First, get the analyzed form fields
+            const analyzeResponse = await chrome.tabs.sendMessage(tab.id, { 
+                action: 'analyzeForm',
+                scope: this.selectedElement ? 'selected' : 'global'
             });
 
-            if (results && results[0] && results[0].result) {
-                const fields = results[0].result;
+            if (!analyzeResponse.success || analyzeResponse.fields.length === 0) {
+                this.log('❌ Tidak ada field yang dapat diisi', 'error');
+                return;
+            }
 
-                // Generate data with Gemini AI
-                const generatedData = await this.generateFormData(fields);
+            // Generate AI data for the fields
+            this.log('🧠 Memproses dengan Gemini AI...', 'info');
+            const generatedData = await this.generateFormData(analyzeResponse.fields);
+            
+            if (!generatedData) {
+                this.log('❌ Gagal generate data dengan AI', 'error');
+                return;
+            }
 
-                if (generatedData) {
-                    // Fill the form with inline function
-                    await chrome.scripting.executeScript({
-                        target: { tabId: tab.id },
-                        function: (data) => {
-                            // Helper function untuk mencari label
-                            function getFieldLabel(element) {
-                                if (element.labels && element.labels.length > 0) {
-                                    return element.labels[0].textContent.trim();
-                                }
-                                const label = document.querySelector(`label[for="${element.id}"]`);
-                                if (label) {
-                                    return label.textContent.trim();
-                                }
-                                const closestLabel = element.closest('label');
-                                if (closestLabel) {
-                                    return closestLabel.textContent.replace(element.value || '', '').trim();
-                                }
-                                let prev = element.previousElementSibling;
-                                if (prev && prev.tagName.toLowerCase() === 'label') {
-                                    return prev.textContent.trim();
-                                }
-                                return '';
-                            }
+            // Send the generated data to content script for form filling
+            const response = await chrome.tabs.sendMessage(tab.id, {
+                action: 'fillFormWithGeneratedData',
+                generatedData: generatedData,
+                selectedElement: this.selectedElement
+            });
 
-                            // Fill form logic
-                            const selectors = [
-                                'input[type="text"]', 'input[type="email"]', 'input[type="tel"]',
-                                'input[type="url"]', 'input[type="number"]', 'input[type="password"]',
-                                'input[type="search"]', 'input[type="date"]', 'input[type="datetime-local"]',
-                                'input[type="time"]', 'input[type="month"]', 'input[type="week"]',
-                                'input:not([type])', 'textarea', 'select'
-                            ];
-
-                            let filledCount = 0;
-
-                            selectors.forEach(selector => {
-                                const elements = document.querySelectorAll(selector);
-                                elements.forEach(element => {
-                                    // Update visibility check to handle modals
-                                    const isInModal = element.closest('.modal, [role="dialog"], .popup, .overlay, .lightbox') !== null;
-                                    const isVisible = element.offsetParent !== null || isInModal || 
-                                                    window.getComputedStyle(element).display !== 'none';
-                                    
-                                    if (!element.disabled && !element.readOnly && isVisible) {
-                                        // Try to find matching data
-                                        let value = null;
-
-                                        // Try different identifiers
-                                        const identifiers = [
-                                            element.name,
-                                            element.id,
-                                            element.placeholder?.toLowerCase(),
-                                            getFieldLabel(element)?.toLowerCase()
-                                        ].filter(Boolean);
-
-                                        for (const identifier of identifiers) {
-                                            if (data[identifier]) {
-                                                value = data[identifier];
-                                                break;
-                                            }
-
-                                            // Try partial matches
-                                            const keys = Object.keys(data);
-                                            const partialMatch = keys.find(key => 
-                                                key.toLowerCase().includes(identifier.toLowerCase()) ||
-                                                identifier.toLowerCase().includes(key.toLowerCase())
-                                            );
-
-                                            if (partialMatch) {
-                                                value = data[partialMatch];
-                                                break;
-                                            }
-                                        }
-
-                                        if (value) {
-                                            if (element.tagName.toLowerCase() === 'select') {
-                                                // Enhanced select element handling
-                                                const options = Array.from(element.options);
-                                                
-                                                // Skip empty or placeholder options
-                                                const validOptions = options.filter(option => 
-                                                    option.value && 
-                                                    option.value !== '' && 
-                                                    option.value !== 'null' &&
-                                                    option.value !== 'undefined' &&
-                                                    !option.textContent.toLowerCase().includes('pilih') &&
-                                                    !option.textContent.toLowerCase().includes('select')
-                                                );
-
-                                                if (validOptions.length > 0) {
-                                                    // Try to match with AI value first
-                                                    let matchingOption = validOptions.find(option => 
-                                                        option.value.toLowerCase().includes(value.toLowerCase()) ||
-                                                        option.textContent.toLowerCase().includes(value.toLowerCase())
-                                                    );
-
-                                                    // If no match, pick a random valid option
-                                                    if (!matchingOption) {
-                                                        const randomIndex = Math.floor(Math.random() * validOptions.length);
-                                                        matchingOption = validOptions[randomIndex];
-                                                    }
-
-                                                    if (matchingOption) {
-                                                        element.value = matchingOption.value;
-                                                        console.log(`Selected option: ${matchingOption.textContent} (${matchingOption.value})`);
-                                                    }
-                                                }
-                                            } else {
-                                                element.value = value;
-                                            }
-
-                                            // Trigger events
-                                            element.dispatchEvent(new Event('input', { bubbles: true }));
-                                            element.dispatchEvent(new Event('change', { bubbles: true }));
-                                            filledCount++;
-                                        } else if (element.tagName.toLowerCase() === 'select') {
-                                            // Handle select without AI value - just pick a random option
-                                            const options = Array.from(element.options);
-                                            const validOptions = options.filter(option => 
-                                                option.value && 
-                                                option.value !== '' && 
-                                                option.value !== 'null' &&
-                                                option.value !== 'undefined' &&
-                                                !option.textContent.toLowerCase().includes('pilih') &&
-                                                !option.textContent.toLowerCase().includes('select')
-                                            );
-
-                                            if (validOptions.length > 0) {
-                                                const randomIndex = Math.floor(Math.random() * validOptions.length);
-                                                const selectedOption = validOptions[randomIndex];
-                                                element.value = selectedOption.value;
-                                                element.dispatchEvent(new Event('change', { bubbles: true }));
-                                                filledCount++;
-                                                console.log(`Random selected: ${selectedOption.textContent} (${selectedOption.value})`);
-                                            }
-                                        }
-                                    }
-                                });
-                            });
-
-                            return filledCount;
-                        },
-                        args: [generatedData]
-                    });
-
-                    this.log('Form berhasil diisi dengan AI', 'success');
-                } else {
-                    this.log('Gagal generate data dari AI', 'error');
-                }
+            if (response && response.success) {
+                this.log('✅ Form berhasil diisi dengan AI', 'success');
+            } else {
+                this.log('❌ Gagal mengisi form', 'error');
             }
         } catch (error) {
-            this.log('Error mengisi form: ' + error.message, 'error');
             console.error('Fill form error:', error);
-        } finally {
-            const fillButton = document.getElementById('fillForm');
-            fillButton.disabled = false;
-            
-            // Restore button text safely
-            const btnTextElement = fillButton.querySelector('.btn-text');
-            if (btnTextElement) {
-                btnTextElement.innerHTML = '<i class="fas fa-magic"></i> Isi Form dengan AI';
-            } else {
-                fillButton.textContent = '✨ Isi Form dengan AI';
-            }
+            this.log('❌ Error saat mengisi form. Pastikan halaman sudah dimuat.', 'error');
         }
     }
 
@@ -647,11 +551,18 @@ WAJIB: Hindari menggunakan data di atas! Buat variasi yang berbeda dan kreatif.`
 
         prompt += `\nBuatkan data yang sesuai untuk setiap field dalam format JSON seperti ini:
 {
-  "field_identifier_1": "nilai_yang_sesuai",
-  "field_identifier_2": "nilai_yang_sesuai"
+  "field_name_or_id": "nilai_yang_sesuai",
+  "another_field": "nilai_lain"
 }
 
-Gunakan name, id, atau placeholder sebagai identifier. Pastikan data realistis dan BERVARIASI untuk testing:
+Gunakan NAME, ID, atau PLACEHOLDER sebagai key JSON. Pastikan data realistis dan BERVARIASI untuk testing:
+
+PANDUAN GENERATE DATA:
+- Gunakan nama field asli sebagai key JSON (name="email" → key: "email")
+- Jika field tidak punya name, gunakan id (id="userEmail" → key: "userEmail") 
+- Jika tidak ada keduanya, gunakan placeholder atau label
+- Data harus realistis dan konsisten untuk testing form
+- Hindari data yang sama dengan generate sebelumnya
 
 VARIASI DATA YANG DISARANKAN:
 - Name: Pilih dari variasi seperti "${randomMaleName} ${randomLastName}", "${randomFemaleName} ${randomLastName}", atau kombinasi lain yang unik
@@ -687,57 +598,37 @@ Hanya return JSON object saja, tanpa teks tambahan.`;
     }
 
     async clearForm() {
-        this.log('Mengosongkan form...', 'info');
-
+        this.log('Membersihkan form...', 'info');
+        
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-            await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                function: () => {
-                    // Clear input and textarea elements
-                    const selectors = [
-                        'input[type="text"]',
-                        'input[type="email"]', 
-                        'input[type="tel"]',
-                        'input[type="url"]',
-                        'input[type="number"]',
-                        'input[type="password"]',
-                        'input[type="search"]',
-                        'input[type="date"]',
-                        'input[type="datetime-local"]',
-                        'input[type="time"]',
-                        'input[type="month"]',
-                        'input[type="week"]',
-                        'input:not([type])',
-                        'textarea'
-                    ];
-
-                    selectors.forEach(selector => {
-                        const elements = document.querySelectorAll(selector);
-                        elements.forEach(element => {
-                            if (!element.disabled && !element.readOnly) {
-                                element.value = '';
-                                element.dispatchEvent(new Event('input', { bubbles: true }));
-                                element.dispatchEvent(new Event('change', { bubbles: true }));
-                            }
-                        });
-                    });
-
-                    // Clear select elements
-                    const selects = document.querySelectorAll('select');
-                    selects.forEach(select => {
-                        if (!select.disabled) {
-                            select.selectedIndex = 0;
-                            select.dispatchEvent(new Event('change', { bubbles: true }));
-                        }
-                    });
-                }
+            
+            // Check if content script is ready
+            try {
+                await chrome.tabs.sendMessage(tab.id, { action: 'ping' });
+            } catch (pingError) {
+                // Content script not ready, inject it
+                this.log('Memuat content script...', 'info');
+                await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    files: ['src/content/content.js']
+                });
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            const response = await chrome.tabs.sendMessage(tab.id, { 
+                action: 'clearForm',
+                selectedElement: this.selectedElement
             });
 
-            this.log('Form berhasil dikosongkan', 'success');
+            if (response && response.success) {
+                this.log('✅ Form berhasil dibersihkan', 'success');
+            } else {
+                this.log('❌ Gagal membersihkan form', 'error');
+            }
         } catch (error) {
-            this.log('Error mengosongkan form: ' + error.message, 'error');
+            console.error('Clear form error:', error);
+            this.log('❌ Error saat membersihkan form. Pastikan halaman sudah dimuat.', 'error');
         }
     }
 
@@ -873,25 +764,38 @@ Hanya return JSON object saja, tanpa teks tambahan.`;
 
     updateUI() {
         const hasApiKey = !!this.apiKey;
+        const fillFormButton = document.getElementById('fillForm');
+        const formStatusElement = document.getElementById('formStatus');
         
         // Enable analyze button if we have API key
         document.getElementById('analyzeForm').disabled = !hasApiKey;
 
-        // Handle fill form button status more carefully
+        // Handle fill form button status
         if (!hasApiKey) {
-            document.getElementById('fillForm').disabled = true;
-            
-            // Safely update form status if element exists
-            const formStatusElement = document.getElementById('formStatus');
+            fillFormButton.disabled = true;
             if (formStatusElement) {
                 formStatusElement.textContent = 'Perlu API Key';
             }
         } else if (this.isFormAnalyzed && this.fieldCount > 0) {
-            // Re-enable fill form button if form was already analyzed and has fields
-            document.getElementById('fillForm').disabled = false;
+            // Enable fill form button if form was analyzed successfully with fields found
+            fillFormButton.disabled = false;
+            if (formStatusElement) {
+                formStatusElement.textContent = `Siap auto-fill ${this.fieldCount} field dengan AI`;
+            }
+            console.log('Fill form button enabled - Form analyzed:', this.isFormAnalyzed, 'Field count:', this.fieldCount);
+        } else if (hasApiKey && !this.isFormAnalyzed) {
+            // Has API key but not analyzed yet
+            fillFormButton.disabled = true;
+            if (formStatusElement) {
+                formStatusElement.textContent = 'Analisis form terlebih dahulu';
+            }
+        } else if (hasApiKey && this.isFormAnalyzed && this.fieldCount === 0) {
+            // Analyzed but no fields found
+            fillFormButton.disabled = true;
+            if (formStatusElement) {
+                formStatusElement.textContent = 'Tidak ada field yang ditemukan';
+            }
         }
-        // Don't automatically disable fillForm if we have API key but haven't analyzed yet
-        // Let the analyze process handle that
         
         // Update selected element info
         this.updateSelectedElementInfo();

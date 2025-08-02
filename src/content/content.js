@@ -44,6 +44,11 @@ class AutoFillerContent {
                     sendResponse({ success: true, filledCount: fillResult });
                     break;
 
+                case 'fillFormWithGeneratedData':
+                    const aiResult = this.fillFormWithAIData(request.generatedData, request.selectedElement);
+                    sendResponse({ success: true, filledCount: aiResult });
+                    break;
+
                 case 'clearForm':
                     this.clearAllForms();
                     sendResponse({ success: true });
@@ -69,6 +74,11 @@ class AutoFillerContent {
                         success: true, 
                         selectedElement: this.getSelectedElementInfo() 
                     });
+                    break;
+
+                case 'clearElementHighlight':
+                    this.removeSelectedHighlight();
+                    sendResponse({ success: true });
                     break;
 
                 default:
@@ -342,11 +352,6 @@ class AutoFillerContent {
         });
     }
 
-    removeSelectedHighlight() {
-        const highlight = document.getElementById('auto-filler-selected-highlight');
-        if (highlight) highlight.remove();
-    }
-
     detectFormFields(scope = 'auto') {
         const formFields = [];
         const processedElements = new Set();
@@ -364,14 +369,24 @@ class AutoFillerContent {
                 console.warn('⚠️ No element selected for selected scope analysis');
                 return [];
             }
-            searchScope = this.selectedElement;
-            scopeDescription = `selected element (${this.selectedElement.tagName})`;
+            // Validate selectedElement is a DOM element with querySelectorAll method
+            if (typeof this.selectedElement.querySelectorAll !== 'function') {
+                console.warn('⚠️ Selected element is not a valid DOM element, falling back to document');
+                searchScope = document;
+                scopeDescription = 'entire document (fallback)';
+            } else {
+                searchScope = this.selectedElement;
+                scopeDescription = `selected element (${this.selectedElement.tagName})`;
+            }
         } else {
-            // Auto mode - use selected element if available
-            searchScope = this.selectedElement || document;
-            scopeDescription = this.selectedElement ? 
-                `selected element (${this.selectedElement.tagName})` : 
-                'entire document (auto)';
+            // Auto mode - use selected element if available and valid
+            if (this.selectedElement && typeof this.selectedElement.querySelectorAll === 'function') {
+                searchScope = this.selectedElement;
+                scopeDescription = `selected element (${this.selectedElement.tagName})`;
+            } else {
+                searchScope = document;
+                scopeDescription = 'entire document (auto)';
+            }
         }
         
         // Log scope for debugging
@@ -655,6 +670,42 @@ class AutoFillerContent {
         });
 
         const scopeDesc = this.selectedElement ? 'selected element' : 'entire page';
+        console.log(`✅ Filled ${filledCount} fields with AI data in ${scopeDesc}`);
+        return filledCount;
+    }
+
+    fillFormWithAIData(generatedData, selectedElement = null) {
+        let filledCount = 0;
+        
+        // Use provided selectedElement or fall back to instance variable or document
+        const scope = selectedElement || this.selectedElement || document;
+        
+        // Detect fields in the specified scope
+        const fields = this.detectFormFields(selectedElement ? 'selected' : 'auto');
+
+        fields.forEach(fieldInfo => {
+            const element = document.querySelector(fieldInfo.selector);
+            if (!element || element.disabled || element.readOnly) {
+                return;
+            }
+
+            // Ensure element is within scope if we have one
+            if (scope !== document && !scope.contains(element)) {
+                return;
+            }
+
+            let value = this.findMatchingValue(fieldInfo, generatedData);
+
+            if (value !== null) {
+                this.setFieldValue(element, value);
+                filledCount++;
+
+                // Visual feedback
+                this.showFieldFillAnimation(element);
+            }
+        });
+
+        const scopeDesc = (selectedElement || this.selectedElement) ? 'selected element' : 'entire page';
         console.log(`✅ Filled ${filledCount} fields with AI data in ${scopeDesc}`);
         return filledCount;
     }
