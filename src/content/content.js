@@ -3,6 +3,10 @@ class AutoFillerContent {
     constructor() {
         this.formFields = [];
         this.isInitialized = false;
+        this.selectedElement = null;
+        this.isSelectingMode = false;
+        this.originalCursor = null;
+        this.highlightElement = null;
         this.init();
     }
 
@@ -40,6 +44,28 @@ class AutoFillerContent {
                     sendResponse({ success: true });
                     break;
 
+                case 'startElementSelection':
+                    this.startElementSelection();
+                    sendResponse({ success: true });
+                    break;
+
+                case 'stopElementSelection':
+                    this.stopElementSelection();
+                    sendResponse({ success: true });
+                    break;
+
+                case 'clearSelectedElement':
+                    this.clearSelectedElement();
+                    sendResponse({ success: true });
+                    break;
+
+                case 'getSelectedElement':
+                    sendResponse({ 
+                        success: true, 
+                        selectedElement: this.getSelectedElementInfo() 
+                    });
+                    break;
+
                 default:
                     sendResponse({ success: false, error: 'Unknown action' });
             }
@@ -49,9 +75,247 @@ class AutoFillerContent {
         }
     }
 
+    // ===== ELEMENT SELECTION METHODS =====
+
+    startElementSelection() {
+        if (this.isSelectingMode) return;
+
+        this.isSelectingMode = true;
+        this.originalCursor = document.body.style.cursor;
+        document.body.style.cursor = 'crosshair';
+
+        // Add event listeners for element selection
+        document.addEventListener('mouseover', this.handleElementHover.bind(this), true);
+        document.addEventListener('mouseout', this.handleElementMouseOut.bind(this), true);
+        document.addEventListener('click', this.handleElementClick.bind(this), true);
+        document.addEventListener('keydown', this.handleEscapeKey.bind(this), true);
+
+        // Show selection overlay
+        this.createSelectionOverlay();
+        console.log('🎯 Element selection mode activated');
+    }
+
+    stopElementSelection() {
+        if (!this.isSelectingMode) return;
+
+        this.isSelectingMode = false;
+        document.body.style.cursor = this.originalCursor || '';
+
+        // Remove event listeners
+        document.removeEventListener('mouseover', this.handleElementHover.bind(this), true);
+        document.removeEventListener('mouseout', this.handleElementMouseOut.bind(this), true);
+        document.removeEventListener('click', this.handleElementClick.bind(this), true);
+        document.removeEventListener('keydown', this.handleEscapeKey.bind(this), true);
+
+        // Remove hover highlight
+        this.removeHoverHighlight();
+        this.removeSelectionOverlay();
+        console.log('🎯 Element selection mode deactivated');
+    }
+
+    handleElementHover(event) {
+        if (!this.isSelectingMode) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const element = event.target;
+        if (this.isValidSelectableElement(element)) {
+            this.highlightHoverElement(element);
+        }
+    }
+
+    handleElementMouseOut(event) {
+        if (!this.isSelectingMode) return;
+        this.removeHoverHighlight();
+    }
+
+    handleElementClick(event) {
+        if (!this.isSelectingMode) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const element = event.target;
+        if (this.isValidSelectableElement(element)) {
+            this.selectElement(element);
+            this.stopElementSelection();
+            
+            // Notify popup about selection
+            chrome.runtime.sendMessage({
+                action: 'elementSelected',
+                element: this.getSelectedElementInfo()
+            });
+        }
+    }
+
+    handleEscapeKey(event) {
+        if (!this.isSelectingMode) return;
+        
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            this.stopElementSelection();
+        }
+    }
+
+    isValidSelectableElement(element) {
+        // Check if element is selectable (contains forms or is a form container)
+        const formElements = element.querySelectorAll('input, select, textarea');
+        const isFormElement = ['INPUT', 'SELECT', 'TEXTAREA'].includes(element.tagName);
+        const isFormContainer = element.tagName === 'FORM';
+        const hasFormElements = formElements.length > 0;
+
+        return isFormElement || isFormContainer || hasFormElements;
+    }
+
+    selectElement(element) {
+        this.clearSelectedElement();
+        this.selectedElement = element;
+        this.highlightSelectedElement(element);
+        console.log('✅ Element selected:', element);
+    }
+
+    clearSelectedElement() {
+        if (this.selectedElement) {
+            this.removeSelectedHighlight();
+            this.selectedElement = null;
+        }
+    }
+
+    getSelectedElementInfo() {
+        if (!this.selectedElement) return null;
+
+        const element = this.selectedElement;
+        return {
+            tagName: element.tagName.toLowerCase(),
+            id: element.id || '',
+            className: element.className || '',
+            selector: this.getUniqueSelector(element),
+            formFields: this.getFormFieldsInElement(element)
+        };
+    }
+
+    getFormFieldsInElement(element) {
+        if (!element) return [];
+
+        const formFields = [];
+        const selectors = [
+            'input[type="text"]', 'input[type="email"]', 'input[type="tel"]',
+            'input[type="url"]', 'input[type="number"]', 'input[type="password"]',
+            'input[type="search"]', 'input[type="date"]', 'input[type="datetime-local"]',
+            'input[type="time"]', 'input[type="week"]', 'input[type="month"]',
+            'input:not([type])', 'textarea', 'select'
+        ];
+
+        selectors.forEach(selector => {
+            const fields = element.querySelectorAll(selector);
+            fields.forEach(field => {
+                if (this.isValidFormField(field)) {
+                    formFields.push(this.extractFieldInfo(field));
+                }
+            });
+        });
+
+        return formFields;
+    }
+
+    // Visual feedback methods
+    createSelectionOverlay() {
+        const overlay = document.createElement('div');
+        overlay.id = 'auto-filler-selection-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(37, 99, 235, 0.1);
+            pointer-events: none;
+            z-index: 10000;
+            border: 2px dashed #2563eb;
+        `;
+        document.body.appendChild(overlay);
+    }
+
+    removeSelectionOverlay() {
+        const overlay = document.getElementById('auto-filler-selection-overlay');
+        if (overlay) overlay.remove();
+    }
+
+    highlightHoverElement(element) {
+        this.removeHoverHighlight();
+        
+        const highlight = document.createElement('div');
+        highlight.id = 'auto-filler-hover-highlight';
+        
+        const rect = element.getBoundingClientRect();
+        highlight.style.cssText = `
+            position: fixed;
+            top: ${rect.top}px;
+            left: ${rect.left}px;
+            width: ${rect.width}px;
+            height: ${rect.height}px;
+            background: rgba(217, 119, 6, 0.2);
+            border: 2px solid #d97706;
+            pointer-events: none;
+            z-index: 10001;
+            border-radius: 4px;
+        `;
+        
+        document.body.appendChild(highlight);
+    }
+
+    removeHoverHighlight() {
+        const highlight = document.getElementById('auto-filler-hover-highlight');
+        if (highlight) highlight.remove();
+    }
+
+    highlightSelectedElement(element) {
+        const highlight = document.createElement('div');
+        highlight.id = 'auto-filler-selected-highlight';
+        
+        const rect = element.getBoundingClientRect();
+        highlight.style.cssText = `
+            position: fixed;
+            top: ${rect.top}px;
+            left: ${rect.left}px;
+            width: ${rect.width}px;
+            height: ${rect.height}px;
+            background: rgba(34, 197, 94, 0.2);
+            border: 3px solid #22c55e;
+            pointer-events: none;
+            z-index: 10002;
+            border-radius: 6px;
+            animation: selectedPulse 2s infinite;
+        `;
+        
+        // Add CSS animation
+        if (!document.getElementById('auto-filler-animations')) {
+            const style = document.createElement('style');
+            style.id = 'auto-filler-animations';
+            style.textContent = `
+                @keyframes selectedPulse {
+                    0%, 100% { opacity: 1; transform: scale(1); }
+                    50% { opacity: 0.7; transform: scale(1.02); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        document.body.appendChild(highlight);
+    }
+
+    removeSelectedHighlight() {
+        const highlight = document.getElementById('auto-filler-selected-highlight');
+        if (highlight) highlight.remove();
+    }
+
     detectFormFields() {
         const formFields = [];
         const processedElements = new Set();
+
+        // Use selected element as scope if available, otherwise use document
+        const scope = this.selectedElement || document;
 
         // Enhanced selectors for better form field detection
         const selectors = [
@@ -74,7 +338,7 @@ class AutoFillerContent {
         ];
 
         selectors.forEach(selector => {
-            const elements = document.querySelectorAll(selector);
+            const elements = scope.querySelectorAll(selector);
             elements.forEach(element => {
                 // Skip if already processed, disabled, readonly, or hidden
                 if (processedElements.has(element) || 

@@ -5,6 +5,8 @@ class AutoFillerPopup {
         this.fieldCount = 0;
         this.isFormAnalyzed = false;
         this.usedData = new Set(); // Track previously used data for variation
+        this.selectedElement = null;
+        this.isSelectingElement = false;
 
         this.init();
     }
@@ -12,8 +14,18 @@ class AutoFillerPopup {
     async init() {
         await this.loadApiKey();
         this.bindEvents();
+        this.setupMessageListener();
         this.updateUI();
         this.log('Ekstensi siap digunakan', 'info');
+    }
+
+    setupMessageListener() {
+        // Listen for messages from content script
+        chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+            if (message.action === 'elementSelected') {
+                this.onElementSelected(message.element);
+            }
+        });
     }
 
     async loadApiKey() {
@@ -40,6 +52,19 @@ class AutoFillerPopup {
         document.getElementById('saveApiKey').addEventListener('click', () => {
             this.saveApiKey();
         });
+
+        // Element Selector
+        document.getElementById('selectElement').addEventListener('click', () => {
+            this.toggleElementSelection();
+        });
+
+        // Clear Selection
+        const clearSelectionBtn = document.getElementById('clearSelection');
+        if (clearSelectionBtn) {
+            clearSelectionBtn.addEventListener('click', () => {
+                this.clearSelectedElement();
+            });
+        }
 
         // Analyze Form
         document.getElementById('analyzeForm').addEventListener('click', () => {
@@ -92,6 +117,103 @@ class AutoFillerPopup {
         } catch (error) {
             this.updateApiStatus('Gagal menyimpan API Key', 'error');
             this.log('Error: Gagal menyimpan API Key', 'error');
+        }
+    }
+
+    // ===== ELEMENT SELECTION METHODS =====
+
+    async toggleElementSelection() {
+        if (this.isSelectingElement) {
+            await this.stopElementSelection();
+        } else {
+            await this.startElementSelection();
+        }
+    }
+
+    async startElementSelection() {
+        try {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            
+            await chrome.tabs.sendMessage(tab.id, { action: 'startElementSelection' });
+            
+            this.isSelectingElement = true;
+            this.updateElementSelectorButton();
+            this.log('Mode seleksi elemen diaktifkan - klik elemen yang ingin dipilih', 'info');
+            
+        } catch (error) {
+            console.error('Error starting element selection:', error);
+            this.log('Error: Gagal mengaktifkan mode seleksi elemen', 'error');
+        }
+    }
+
+    async stopElementSelection() {
+        try {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            
+            await chrome.tabs.sendMessage(tab.id, { action: 'stopElementSelection' });
+            
+            this.isSelectingElement = false;
+            this.updateElementSelectorButton();
+            this.log('Mode seleksi elemen dinonaktifkan', 'info');
+            
+        } catch (error) {
+            console.error('Error stopping element selection:', error);
+        }
+    }
+
+    async clearSelectedElement() {
+        try {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            
+            await chrome.tabs.sendMessage(tab.id, { action: 'clearSelectedElement' });
+            
+            this.selectedElement = null;
+            this.updateSelectedElementInfo();
+            this.updateUI();
+            this.log('Elemen terpilih dihapus', 'info');
+            
+        } catch (error) {
+            console.error('Error clearing selected element:', error);
+        }
+    }
+
+    onElementSelected(elementInfo) {
+        this.selectedElement = elementInfo;
+        this.isSelectingElement = false;
+        this.updateElementSelectorButton();
+        this.updateSelectedElementInfo();
+        this.log(`Elemen terpilih: ${elementInfo.tagName} (${elementInfo.formFields.length} fields)`, 'success');
+        
+        // Auto-analyze form after selection
+        if (elementInfo.formFields.length > 0) {
+            this.analyzeForm();
+        }
+    }
+
+    updateElementSelectorButton() {
+        const button = document.getElementById('selectElement');
+        const btnText = button.querySelector('.btn-text');
+        
+        if (this.isSelectingElement) {
+            button.classList.add('active');
+            btnText.innerHTML = '<i class="fas fa-times"></i> Batalkan';
+        } else {
+            button.classList.remove('active');
+            btnText.innerHTML = '<i class="fas fa-crosshairs"></i> Pilih Elemen';
+        }
+    }
+
+    updateSelectedElementInfo() {
+        const infoContainer = document.getElementById('selectedElementInfo');
+        const tagElement = document.getElementById('selectedElementTag');
+        const selectorElement = document.getElementById('selectedElementSelector');
+        
+        if (this.selectedElement && infoContainer && tagElement && selectorElement) {
+            infoContainer.style.display = 'block';
+            tagElement.textContent = this.selectedElement.tagName.toUpperCase();
+            selectorElement.textContent = this.selectedElement.selector;
+        } else if (infoContainer) {
+            infoContainer.style.display = 'none';
         }
     }
 
@@ -880,6 +1002,9 @@ Hanya return JSON object saja, tanpa teks tambahan.`;
         }
         // Don't automatically disable fillForm if we have API key but haven't analyzed yet
         // Let the analyze process handle that
+        
+        // Update selected element info
+        this.updateSelectedElementInfo();
     }
 
     log(message, type = 'info') {
