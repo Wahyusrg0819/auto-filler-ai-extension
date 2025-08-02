@@ -40,7 +40,7 @@ Ekstensi Chrome yang menggunakan Gemini AI untuk mengisi form secara otomatis. S
 Clone atau download repository ini:
 
 ```bash
-git clone https://github.com/your-username/auto-filler-extension.git
+https://github.com/Wahyusrg0819/auto-filler-ai-extension.git
 ```
 
 ### 2. Buka Chrome Extensions
