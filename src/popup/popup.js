@@ -207,13 +207,25 @@ class AutoFillerPopup {
         const infoContainer = document.getElementById('selectedElementInfo');
         const tagElement = document.getElementById('selectedElementTag');
         const selectorElement = document.getElementById('selectedElementSelector');
+        const analyzeButton = document.getElementById('analyzeForm');
+        const analyzeText = document.getElementById('analyzeFormText');
         
         if (this.selectedElement && infoContainer && tagElement && selectorElement) {
             infoContainer.style.display = 'block';
             tagElement.textContent = this.selectedElement.tagName.toUpperCase();
             selectorElement.textContent = this.selectedElement.selector;
+            
+            // Update analyze button text for selected element mode
+            if (analyzeText) {
+                analyzeText.innerHTML = '<i class="fas fa-crosshairs"></i> Analisis Elemen Terpilih';
+            }
         } else if (infoContainer) {
             infoContainer.style.display = 'none';
+            
+            // Reset analyze button text for global mode
+            if (analyzeText) {
+                analyzeText.innerHTML = '<i class="fas fa-search"></i> Analisis Form Global';
+            }
         }
     }
 
@@ -223,171 +235,49 @@ class AutoFillerPopup {
             return;
         }
 
-        this.log('Menganalisis form...', 'info');
+        // Determine analysis scope based on selected element
+        const analysisScope = this.selectedElement ? 'selected' : 'global';
+        const scopeDesc = this.selectedElement ? 'elemen terpilih' : 'seluruh halaman';
+        
+        this.log(`Menganalisis form dalam ${scopeDesc}...`, 'info');
 
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-            const results = await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                function: () => {
-                    // Helper function untuk mencari label (definisi ulang di dalam injected function)
-                    function getFieldLabel(element) {
-                        // Try to find label
-                        if (element.labels && element.labels.length > 0) {
-                            return element.labels[0].textContent.trim();
-                        }
-
-                        // Try to find label by for attribute
-                        const label = document.querySelector(`label[for="${element.id}"]`);
-                        if (label) {
-                            return label.textContent.trim();
-                        }
-
-                        // Try to find closest label
-                        const closestLabel = element.closest('label');
-                        if (closestLabel) {
-                            return closestLabel.textContent.replace(element.value || '', '').trim();
-                        }
-
-                        // Try previous sibling
-                        let prev = element.previousElementSibling;
-                        if (prev && prev.tagName.toLowerCase() === 'label') {
-                            return prev.textContent.trim();
-                        }
-
-                        return '';
-                    }
-
-                    // Main detection logic
-                    const formFields = [];
-                    const selectors = [
-                        'input[type="text"]',
-                        'input[type="email"]', 
-                        'input[type="tel"]',
-                        'input[type="url"]',
-                        'input[type="number"]',
-                        'input[type="password"]',
-                        'input[type="search"]',
-                        'input[type="date"]',
-                        'input[type="datetime-local"]',
-                        'input[type="time"]',
-                        'input[type="month"]',
-                        'input[type="week"]',
-                        'input:not([type])',
-                        'textarea',
-                        'select'
-                    ];
-
-                    console.log('Starting form field detection...');
-
-                    selectors.forEach(selector => {
-                        const elements = document.querySelectorAll(selector);
-                        console.log(`Found ${elements.length} elements for selector: ${selector}`);
-                        
-                        elements.forEach((element, index) => {
-                            // Lebih permisif dalam deteksi visibility
-                            const isInModal = element.closest('.modal, [role="dialog"], .popup, .overlay, .lightbox') !== null;
-                            const computedStyle = window.getComputedStyle(element);
-                            const isVisible = element.offsetParent !== null || 
-                                            isInModal || 
-                                            (computedStyle.display !== 'none' && computedStyle.visibility !== 'hidden');
-                            
-                            console.log(`Element ${index} (${selector}):`, {
-                                id: element.id,
-                                name: element.name,
-                                type: element.type,
-                                disabled: element.disabled,
-                                readOnly: element.readOnly,
-                                offsetParent: !!element.offsetParent,
-                                display: computedStyle.display,
-                                visibility: computedStyle.visibility,
-                                isVisible: isVisible
-                            });
-
-                            // Lebih permisif: hanya check disabled, tidak peduli visibility
-                            if (!element.disabled && !element.readOnly) {
-                                const fieldInfo = {
-                                    id: element.id || '',
-                                    name: element.name || '',
-                                    type: element.type || element.tagName.toLowerCase(),
-                                    placeholder: element.placeholder || '',
-                                    label: getFieldLabel(element),
-                                    tagName: element.tagName.toLowerCase(),
-                                    required: element.required || false,
-                                    isInModal: isInModal,
-                                    isVisible: isVisible
-                                };
-                                formFields.push(fieldInfo);
-                                console.log('Added field:', fieldInfo);
-                            }
-                        });
-                    });
-
-                    console.log(`Total detected form fields: ${formFields.length}`);
-                    return formFields;
-                }
+            
+            // Send message with scope parameter
+            const response = await chrome.tabs.sendMessage(tab.id, { 
+                action: 'analyzeForm',
+                scope: analysisScope
             });
 
-            if (results && results[0] && results[0].result) {
-                const fields = results[0].result;
+            if (response.success) {
+                const fields = response.fields;
                 this.fieldCount = fields.length;
                 this.isFormAnalyzed = true;
 
-                // Debug logging
-                console.log('Detected fields:', fields);
-                this.log(`Debug: Hasil analisis - ${fields.length} field ditemukan`, 'info');
-
-                // Safely update field count
+                // Update field count display
                 const fieldCountElement = document.getElementById('fieldCount');
                 if (fieldCountElement) {
                     fieldCountElement.textContent = this.fieldCount;
                 }
-                
-                // Update form count display
+
+                // Update form count (estimate based on form containers)
                 const formCountElement = document.getElementById('formCount');
                 if (formCountElement) {
-                    formCountElement.textContent = document.querySelectorAll('form').length || 1;
+                    const uniqueForms = new Set(fields.map(f => f.formContainer || 'default'));
+                    formCountElement.textContent = uniqueForms.size;
                 }
+
+                this.updateUI();
                 
-                // Improved form status and button handling
-                if (this.fieldCount > 0) {
-                    const modalCount = fields.filter(f => f.isInModal).length;
-                    const statusText = modalCount > 0 ? 
-                        `Form terdeteksi (${modalCount} field dalam modal)` : 
-                        'Form terdeteksi';
-                    
-                    // Safely update form status if element exists
-                    const formStatusElement = document.getElementById('formStatus');
-                    if (formStatusElement) {
-                        formStatusElement.textContent = statusText;
-                    }
-                    this.log(`Ditemukan ${this.fieldCount} field form${modalCount > 0 ? ` (${modalCount} dalam modal)` : ''}`, 'success');
-                    
-                    // Enable fill button if we have API key and fields
-                    if (this.apiKey) {
-                        document.getElementById('fillForm').disabled = false;
-                        this.log('Tombol "Isi Form dengan AI" siap digunakan', 'info');
-                    } else {
-                        document.getElementById('fillForm').disabled = true;
-                        this.log('Perlu API Key untuk mengaktifkan tombol isi form', 'error');
-                    }
-                } else {
-                    // Safely update form status if element exists
-                    const formStatusElement = document.getElementById('formStatus');
-                    if (formStatusElement) {
-                        formStatusElement.textContent = 'Tidak ada form';
-                    }
-                    this.log('Tidak ditemukan field form yang dapat diisi', 'error');
-                    document.getElementById('fillForm').disabled = true;
-                }
+                const scopeText = this.selectedElement ? 'dalam elemen terpilih' : 'di halaman';
+                this.log(`✅ Ditemukan ${this.fieldCount} field ${scopeText}`, 'success');
             } else {
-                this.log('Gagal mendapatkan hasil analisis form', 'error');
-                document.getElementById('fillForm').disabled = true;
+                this.log('❌ Gagal menganalisis form', 'error');
             }
         } catch (error) {
-            this.log('Error menganalisis form: ' + error.message, 'error');
             console.error('Analyze form error:', error);
+            this.log('❌ Error saat menganalisis form', 'error');
         }
     }
 

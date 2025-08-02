@@ -30,8 +30,13 @@ class AutoFillerContent {
         try {
             switch (request.action) {
                 case 'analyzeForm':
-                    const fields = this.detectFormFields();
+                    const fields = this.detectFormFields(request.scope || 'global');
                     sendResponse({ success: true, fields: fields });
+                    break;
+
+                case 'analyzeSelectedElement':
+                    const selectedFields = this.detectFormFieldsInSelectedElement();
+                    sendResponse({ success: true, fields: selectedFields });
                     break;
 
                 case 'fillForm':
@@ -342,19 +347,35 @@ class AutoFillerContent {
         if (highlight) highlight.remove();
     }
 
-    detectFormFields() {
+    detectFormFields(scope = 'auto') {
         const formFields = [];
         const processedElements = new Set();
 
-        // Use selected element as scope if available, otherwise use document
-        const scope = this.selectedElement || document;
+        // Determine scope based on parameter and selection state
+        let searchScope, scopeDescription;
+        
+        if (scope === 'global') {
+            // Force global scope regardless of selection
+            searchScope = document;
+            scopeDescription = 'entire document (global)';
+        } else if (scope === 'selected') {
+            // Force selected element scope
+            if (!this.selectedElement) {
+                console.warn('⚠️ No element selected for selected scope analysis');
+                return [];
+            }
+            searchScope = this.selectedElement;
+            scopeDescription = `selected element (${this.selectedElement.tagName})`;
+        } else {
+            // Auto mode - use selected element if available
+            searchScope = this.selectedElement || document;
+            scopeDescription = this.selectedElement ? 
+                `selected element (${this.selectedElement.tagName})` : 
+                'entire document (auto)';
+        }
         
         // Log scope for debugging
-        if (this.selectedElement) {
-            console.log('🎯 Detecting form fields within selected element:', this.selectedElement.tagName, this.selectedElement.className || this.selectedElement.id || '');
-        } else {
-            console.log('🌐 Detecting form fields in entire document');
-        }
+        console.log(`� Detecting form fields in: ${scopeDescription}`);
 
         // Enhanced selectors for better form field detection
         const selectors = [
@@ -377,7 +398,7 @@ class AutoFillerContent {
         ];
 
         selectors.forEach(selector => {
-            const elements = scope.querySelectorAll(selector);
+            const elements = searchScope.querySelectorAll(selector);
             elements.forEach(element => {
                 // Skip if already processed, disabled, readonly, or hidden
                 if (processedElements.has(element) || 
@@ -388,7 +409,7 @@ class AutoFillerContent {
                 }
 
                 // Additional validation: ensure element is actually within our scope
-                if (this.selectedElement && !this.selectedElement.contains(element)) {
+                if (scope === 'selected' && this.selectedElement && !this.selectedElement.contains(element)) {
                     console.warn('⚠️ Element found outside selected scope, skipping:', element);
                     return;
                 }
@@ -404,8 +425,17 @@ class AutoFillerContent {
             });
         });
 
-        console.log(`🔍 Detected ${formFields.length} form fields:`, formFields);
+        console.log(`🔍 Detected ${formFields.length} form fields in ${scopeDescription}:`, formFields);
         return formFields;
+    }
+
+    detectFormFieldsInSelectedElement() {
+        if (!this.selectedElement) {
+            console.warn('⚠️ No element selected for analysis');
+            return [];
+        }
+        
+        return this.detectFormFields('selected');
     }
 
     extractFieldInfo(element) {
